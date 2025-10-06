@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered BI Chatbox</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f6;
+            color: #1c1e21;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #0d1117;
+            text-align: center;
+        }
+        #query-form textarea {
+            width: 100%;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #ccd0d5;
+            font-size: 16px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        #query-form button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #query-form button:disabled {
+            background-color: #9fceff;
+            cursor: not-allowed;
+        }
+        #query-form button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        .spinner {
+            display: none;
+            margin: 20px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #results { margin-top: 2rem; }
+        .result-section {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+        }
+        .result-section h3 { margin-top: 0; }
+        .success { background-color: #e9f5e9; border-left: 5px solid #4CAF50; }
+        .warning { background-color: #fffbe6; border-left: 5px solid #ffc107; }
+        .info { background-color: #e7f3fe; border-left: 5px solid #2196F3; }
+        .error { background-color: #fdecea; border-left: 5px solid #f44336; }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+            display: block;
+            white-space: pre-wrap;
+        }
+        ul { padding-left: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI-Powered BI Chatbox</h1>
+        <p>Ask any business question in plain English. The system will analyze the database and provide intelligent feedback.</p>
+
+        <form id="query-form">
+            <textarea id="user-question" name="question" rows="4" placeholder="e.g., Show me patient statistics, revenue trends, or any available data..."></textarea>
+            <button id="submit-btn" type="submit">Analyze Database</button>
+        </form>
+
+        <div class="spinner" id="spinner"></div>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('query-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const spinner = document.getElementById('spinner');
+        const resultsContainer = document.getElementById('results');
+        const questionInput = document.getElementById('user-question');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const question = questionInput.value.trim();
+            if (!question) {
+                alert('Please enter a question.');
+                return;
+            }
+
+            // UI feedback
+            submitBtn.disabled = true;
+            spinner.style.display = 'block';
+            resultsContainer.innerHTML = '';
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Something went wrong on the server.');
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                displayError(error.message);
+            } finally {
+                // Restore UI
+                submitBtn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        });
+        
+        function displayError(message) {
+            resultsContainer.innerHTML = `<div class="result-section error"><h3>Error</h3><p>${message}</p></div>`;
+        }
+
+        function displayResults(data) {
+            let html = '';
+
+            // 1. Raw Output
+            html += `
+                <div class="result-section info">
+                    <h3>Query Results</h3>
+                    <p>${data.raw_output.replace(/\n/g, '<br>')}</p>
+                </div>
+            `;
+
+            const analysis = data.analysis_result;
+            
+            // 2. Visualizations or No Data Analysis
+            if (analysis.has_data && data.visualizations.length > 0) {
+                html += `
+                    <div class="result-section success">
+                        <h3>Generated Visualizations</h3>
+                        <div id="charts-container"></div>
+                    </div>
+                `;
+            } else {
+                 html += `<div class="result-section warning"><h3>No Data Found - Analysis Report</h3>`;
+                 if(analysis.analysis) html += `<p><strong>Analysis:</strong> ${analysis.analysis}</p>`;
+                 
+                 const schemaAnalysis = data.schema_analysis;
+                 if (schemaAnalysis) {
+                     if(schemaAnalysis.analysis) html += `<p><strong>Schema Analysis:</strong> ${schemaAnalysis.analysis}</p>`;
+                     if(schemaAnalysis.schema_limitations) html += `<p><strong>Schema Limitations:</strong> ${schemaAnalysis.schema_limitations}</p>`;
+                     if(schemaAnalysis.alternative_questions && schemaAnalysis.alternative_questions.length > 0) {
+                         html += `<h4>Try These Questions Instead:</h4><ul>${schemaAnalysis.alternative_questions.map(q => `<li>${q}</li>`).join('')}</ul>`;
+                     }
+                     if(schemaAnalysis.sample_queries && schemaAnalysis.sample_queries.length > 0) {
+                         html += `<h4>Sample SQL Queries:</h4>${schemaAnalysis.sample_queries.map(q => `<code>${q}</code>`).join('')}`;
+                     }
+                 }
+                 html += `</div>`;
+            }
+
+            // 3. Suggestions
+            if (analysis.suggestions && analysis.suggestions.length > 0) {
+                 html += `
+                    <div class="result-section info">
+                        <h3>Suggestions</h3>
+                        <ul>${analysis.suggestions.map(s => `<li>${s}</li>`).join('')}</ul>
+                    </div>
+                `;
+            }
+
+            resultsContainer.innerHTML = html;
+
+            // Render Plotly charts
+            if (analysis.has_data && data.visualizations.length > 0) {
+                const chartsContainer = document.getElementById('charts-container');
+                data.visualizations.forEach((visData, index) => {
+                    const chartDiv = document.createElement('div');
+                    const chartId = `chart-${index}`;
+                    chartDiv.id = chartId;
+                    chartsContainer.appendChild(chartDiv);
+                    
+                    if (visData.type === 'table') {
+                        // Custom table rendering for the fallback
+                        const table = document.createElement('table');
+                        table.style.width = '100%';
+                        table.style.borderCollapse = 'collapse';
+                        const thead = table.createTHead();
+                        const row = thead.insertRow();
+                        visData.header.forEach(text => {
+                            const th = document.createElement("th");
+                            th.textContent = text;
+                            th.style.border = '1px solid #ddd';
+                            th.style.padding = '8px';
+                            th.style.backgroundColor = '#f2f2f2';
+                            row.appendChild(th);
+                        });
+                        const tbody = table.createTBody();
+                        for(let i=0; i<visData.cells[0].length; i++) {
+                            const tr = tbody.insertRow();
+                            for(let j=0; j<visData.cells.length; j++) {
+                                const td = tr.insertCell();
+                                td.textContent = visData.cells[j][i];
+                                td.style.border = '1px solid #ddd';
+                                td.style.padding = '8px';
+                            }
+                        }
+                        chartDiv.innerHTML = `<h4>${visData.title}</h4>`;
+                        chartDiv.appendChild(table);
+
+                    } else {
+                        Plotly.newPlot(chartId, visData.data, visData.layout);
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
